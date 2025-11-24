@@ -1,11 +1,7 @@
 #include "drawing.h"
+#include <newopcodes/drawing.h>
 
 std::vector<CLEOTexture*> m_aCLEOTexs[TOTAL_DRAW_EVENT];
-
-void ClearAllCLEOTextures()
-{
-    CLEOTexture::ClearAll();
-}
 
 CLEO_Fn(DRAW_TEXTURE_PLUS)
 {
@@ -88,4 +84,176 @@ CLEO_Fn(DRAW_STRING)
 CLEO_Fn(DRAW_STRING_EXT)
 {
     
+}
+CLEO_Fn(DRAW_SHAPE) // newOpcodes
+{
+    unsigned int type, numVerts, vertexAlpha, srcBlend, dstBlend, unused;
+    RwTexture* texture;
+    RwOpenGLVertex* pVerts;
+
+    type = cleo->ReadParam(handle)->u;
+    texture = (RwTexture*)cleo->ReadParam(handle)->u;
+    numVerts = cleo->ReadParam(handle)->u;
+    pVerts = (RwOpenGLVertex*)cleo->ReadParam(handle)->u;
+    vertexAlpha = cleo->ReadParam(handle)->u;
+    srcBlend = cleo->ReadParam(handle)->u;
+    dstBlend = cleo->ReadParam(handle)->u;
+    unused = cleo->ReadParam(handle)->u;
+
+    // MOBILE ADDITION (FIX???)
+    if(( uint32_t)pVerts <= 1)
+    {
+        pVerts = ShapeDrawer::m_aStdVerts;
+    }
+    // MOBILE ADDITION END (FIX???)
+
+    cleoaddon->UpdateCompareFlag(handle, ShapeDrawer::DrawShapeThisFrame(type, numVerts, vertexAlpha, srcBlend, dstBlend, texture, pVerts));
+}
+CLEO_Fn(SETUP_SHAPE_VERTEX) // newOpcodes
+{
+    RwV3d posn;
+    RwRGBA color;
+    float rhw, u, v;
+    unsigned int vertex, invX, invY;
+
+    RwOpenGLVertex* pVerts = (RwOpenGLVertex*)cleo->ReadParam(handle)->u;
+    vertex = cleo->ReadParam(handle)->u;
+    posn.x = cleo->ReadParam(handle)->f;
+    posn.y = cleo->ReadParam(handle)->f;
+    posn.z = cleo->ReadParam(handle)->f;
+    rhw = cleo->ReadParam(handle)->f;
+    color.red = cleo->ReadParam(handle)->u;
+    color.green = cleo->ReadParam(handle)->u;
+    color.blue = cleo->ReadParam(handle)->u;
+    color.alpha = cleo->ReadParam(handle)->u;
+    u = cleo->ReadParam(handle)->f;
+    v = cleo->ReadParam(handle)->f;
+    invX = cleo->ReadParam(handle)->u;
+    invY = cleo->ReadParam(handle)->u;
+
+    if(invX)
+    {
+        u = 1.0f - u;
+        posn.x = RsGlobal->maximumWidth - posn.x;
+    }
+    if(invY)
+    {
+        v = 1.0f - v;
+        posn.y = RsGlobal->maximumHeight - posn.y;
+    }
+
+    if((uint32_t)pVerts <= 1)
+    {
+        ShapeDrawer::SetupVertex(&ShapeDrawer::m_aStdVerts[vertex-1], posn, u, v, rhw, color);
+    }
+    else
+    {
+        ShapeDrawer::SetupVertex(&pVerts[vertex-1], posn, u, v, rhw, color);
+    }
+}
+CLEO_Fn(ROTATE_SHAPE_VERTICES) // newOpcodes
+{
+    float x, y, xc, yc, a, _sin, _cos;
+    unsigned int vertices, numVerts;
+
+    vertices = cleo->ReadParam(handle)->u;
+    numVerts = cleo->ReadParam(handle)->u;
+    xc = cleo->ReadParam(handle)->f;
+    yc = cleo->ReadParam(handle)->f;
+    a = (M_PI / 180.0f) * cleo->ReadParam(handle)->f;
+
+    RwOpenGLVertex* pVerts = ((vertices <= 1) ? ShapeDrawer::m_aStdVerts : (RwOpenGLVertex*)vertices);
+
+    _sin = sinf(a);
+    _cos = cosf(a);
+
+    if(numVerts > MAX_NO_VERTICES)
+    {
+        numVerts = MAX_NO_VERTICES;
+    }
+    while(numVerts)
+    {
+        float x = pVerts->pos.x;
+        float y = pVerts->pos.y;
+
+        pVerts->pos.x = xc + (x - xc) * _cos + (y - yc) * _sin;
+        pVerts->pos.y = yc - (x - xc) * _sin + (y - yc) * _cos;
+
+        --numVerts;
+        ++pVerts;
+    }
+}
+CLEO_Fn(DRAW_2D_SPRITE) // newOpcodes
+{
+    CRect rect;
+    CRGBA color;
+    float angle;
+    RwTexture* texture;
+
+    texture = (RwTexture*)cleo->ReadParam(handle)->u;
+    rect.left = cleo->ReadParam(handle)->f;
+    rect.top = cleo->ReadParam(handle)->f;
+    rect.right = cleo->ReadParam(handle)->f;
+    rect.bottom = cleo->ReadParam(handle)->f;
+    color.r = cleo->ReadParam(handle)->u;
+    color.g = cleo->ReadParam(handle)->u;
+    color.b = cleo->ReadParam(handle)->u;
+    color.a = cleo->ReadParam(handle)->u;
+    angle = cleo->ReadParam(handle)->f;
+
+    cleoaddon->UpdateCompareFlag(handle, SpriteDrawer::DrawSpriteThisFrame(texture, rect, color, color, color, color, angle));
+}
+CLEO_Fn(DRAW_2D_SPRITE_WITH_GRADIENT) // newOpcodes
+{
+    CRect rect;
+    CRGBA color[4];
+    float angle;
+    RwTexture* texture;
+
+    texture = (RwTexture*)cleo->ReadParam(handle)->u;
+    rect.left = cleo->ReadParam(handle)->f;
+    rect.top = cleo->ReadParam(handle)->f;
+    rect.right = cleo->ReadParam(handle)->f;
+    rect.bottom = cleo->ReadParam(handle)->f;
+    color[0].r = cleo->ReadParam(handle)->u;
+    color[0].g = cleo->ReadParam(handle)->u;
+    color[0].b = cleo->ReadParam(handle)->u;
+    color[0].a = cleo->ReadParam(handle)->u;
+    color[1].r = cleo->ReadParam(handle)->u;
+    color[1].g = cleo->ReadParam(handle)->u;
+    color[1].b = cleo->ReadParam(handle)->u;
+    color[1].a = cleo->ReadParam(handle)->u;
+    color[2].r = cleo->ReadParam(handle)->u;
+    color[2].g = cleo->ReadParam(handle)->u;
+    color[2].b = cleo->ReadParam(handle)->u;
+    color[2].a = cleo->ReadParam(handle)->u;
+    color[3].r = cleo->ReadParam(handle)->u;
+    color[3].g = cleo->ReadParam(handle)->u;
+    color[3].b = cleo->ReadParam(handle)->u;
+    color[3].a = cleo->ReadParam(handle)->u;
+    angle = cleo->ReadParam(handle)->f;
+
+    cleoaddon->UpdateCompareFlag(handle, SpriteDrawer::DrawSpriteThisFrame(texture, rect, color[0], color[1], color[2], color[3], angle));
+}
+CLEO_Fn(DRAW_SPOTLIGHT)
+{
+    CVector origin, target;
+    float oradius, tradius;
+    uint8_t enableShadow, shadowIntensity, flag1, flag2;
+
+    origin.x = cleo->ReadParam(handle)->f;
+    origin.y = cleo->ReadParam(handle)->f;
+    origin.z = cleo->ReadParam(handle)->f;
+    target.x = cleo->ReadParam(handle)->f;
+    target.y = cleo->ReadParam(handle)->f;
+    target.z = cleo->ReadParam(handle)->f;
+    oradius = cleo->ReadParam(handle)->f;
+    tradius = cleo->ReadParam(handle)->f;
+    
+    enableShadow = cleo->ReadParam(handle)->u;
+    shadowIntensity = cleo->ReadParam(handle)->u;
+    flag1 = cleo->ReadParam(handle)->u;
+    flag2 = cleo->ReadParam(handle)->u;
+
+    cleoaddon->UpdateCompareFlag(handle, SpotLightDrawer::DrawSpotLightThisFrame(origin, target, oradius, tradius, enableShadow, shadowIntensity, flag1, flag2));
 }

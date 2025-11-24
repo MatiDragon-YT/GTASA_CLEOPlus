@@ -45,7 +45,7 @@ void PedExtVars::GrabTasks(CPed* ped)
         while(task)
         {
             type = (int)task->GetTaskType();
-            if(idx < PedExtVars::g_nTasksCacheSize) activeTasks[idx++] = type;
+            if(idx < PedExtVars::MAX_TASKS_CACHE) activeTasks[idx++] = type;
             GrabFlags(task, type, false, idx, ped);
             task = task->GetSubTask();
         }
@@ -56,13 +56,13 @@ void PedExtVars::GrabTasks(CPed* ped)
         while(task)
         {
             type = (int)task->GetTaskType();
-            if(idx < PedExtVars::g_nTasksCacheSize) activeTasks[idx++] = type;
+            if(idx < PedExtVars::MAX_TASKS_CACHE) activeTasks[idx++] = type;
             GrabFlags(task, type, true, idx, ped);
             task = task->GetSubTask();
         }
     }
 
-    for(int i = idx; i < PedExtVars::g_nTasksCacheSize; ++i)
+    for(int i = idx; i < PedExtVars::MAX_TASKS_CACHE; ++i)
     {
         activeTasks[i] = -1;
     }
@@ -165,14 +165,52 @@ CLEO_Fn(IS_CHAR_DOING_TASK_ID)
     bool found = false;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata) found = xdata->HasTask(type);
     }
     cleoaddon->UpdateCompareFlag(handle, found);
 }
 CLEO_Fn(GET_CHAR_TASK_POINTER_BY_ID)
 {
-    
+    CPed* ped = (CPed*)cleo->ReadParam(handle)->i;
+    int taskId = cleo->ReadParam(handle)->i;
+
+    if(ped->m_pIntelligence)
+    {
+        CTask* task;
+        CTaskManager& taskMan = ped->m_pIntelligence->m_TaskMgr;
+        for(int i = 0; i < 5; ++i)
+        {
+            task = taskMan.m_aPrimaryTasks[i];
+            while(task)
+            {
+                if(task->GetTaskType() == (eTaskType)taskId)
+                {
+                    cleo->GetPointerToScriptVar(handle)->i = (int)task;
+                    cleoaddon->UpdateCompareFlag(handle, true);
+                    return;
+                }
+                task = task->GetSubTask();
+            }
+        }
+        for(int i = 0; i < 6; ++i)
+        {
+            task = taskMan.m_aSecondaryTasks[i];
+            while(task)
+            {
+                if(task->GetTaskType() == (eTaskType)taskId)
+                {
+                    cleo->GetPointerToScriptVar(handle)->i = (int)task;
+                    cleoaddon->UpdateCompareFlag(handle, true);
+                    return;
+                }
+                task = task->GetSubTask();
+            }
+        }
+    }
+
+    cleo->GetPointerToScriptVar(handle)->i = 0;
+    cleoaddon->UpdateCompareFlag(handle, false);
 }
 CLEO_Fn(GET_CHAR_KILL_TARGET_CHAR)
 {    
@@ -180,7 +218,7 @@ CLEO_Fn(GET_CHAR_KILL_TARGET_CHAR)
     int ref = -1;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata && xdata->killTargetPed && xdata->killTargetPed->m_nType == ENTITY_TYPE_PED)
         {
             ref = GetPedRef((CPed*)xdata->killTargetPed);
@@ -195,7 +233,7 @@ CLEO_Fn(IS_CHAR_USING_GUN)
     bool found = false;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata) found = xdata->aiFlags.bUsingGun;
     }
     cleoaddon->UpdateCompareFlag(handle, found);
@@ -206,7 +244,7 @@ CLEO_Fn(IS_CHAR_FIGHTING)
     bool found = false;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata) found = xdata->aiFlags.bFighting;
     }
     cleoaddon->UpdateCompareFlag(handle, found);
@@ -217,7 +255,7 @@ CLEO_Fn(IS_CHAR_FALLEN_ON_GROUND)
     bool found = false;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata) found = xdata->aiFlags.bFallenOnGround;
     }
     cleoaddon->UpdateCompareFlag(handle, found);
@@ -228,7 +266,7 @@ CLEO_Fn(IS_CHAR_ENTERING_ANY_CAR)
     bool found = false;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata) found = xdata->aiFlags.bEnteringAnyCar;
     }
     cleoaddon->UpdateCompareFlag(handle, found);
@@ -239,7 +277,7 @@ CLEO_Fn(IS_CHAR_EXITING_ANY_CAR)
     bool found = false;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata) found = xdata->aiFlags.bExitingAnyCar;
     }
     cleoaddon->UpdateCompareFlag(handle, found);
@@ -251,7 +289,7 @@ CLEO_Fn(IS_CHAR_PLAYING_ANY_SCRIPT_ANIMATION)
     bool found = true;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata) found = xdata->HasAnimFlags(mode);
     }
     cleoaddon->UpdateCompareFlag(handle, found);
@@ -263,7 +301,7 @@ CLEO_Fn(IS_CHAR_DOING_ANY_IMPORTANT_TASK)
     bool found = true;
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata && xdata->aiFlags.bRootTaskIsntImportant && !xdata->aiFlags.bKillingSomething)
         {
             found = xdata->HasAnimFlags(mode);

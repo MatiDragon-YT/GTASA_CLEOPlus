@@ -1,16 +1,17 @@
 #pragma once
 
+#include <mod/amlmod.h>
+#include <mod/logger.h>
+
+#include "cleo.h"
+#include "cleoaddon.h"
+#include "GTASA_STRUCTS.h"
+
 #include <list>
 #include <cctype>
 #include <string>
 #include <vector>
 #include <set>
-#define AML32
-#include <mod/amlmod.h>
-#include <mod/logger.h>
-#include "GTASA_STRUCTS.h"
-#include "cleo.h"
-#include "cleoaddon.h"
 
 #define CLEO_RegisterOpcode(x, h) cleo->RegisterOpcode(x, h); cleo->RegisterOpcodeFunction(#h, h)
 #define CLEO_Fn(h) void h (void *handle, uint32_t *ip, uint16_t opcode, const char *name)
@@ -40,7 +41,7 @@ inline void toupper(char *s)
 }
 
 extern std::set<int> SpecialCharacterModelsUsed;
-extern int g_nCurrentSaveSlot;
+extern int g_nCurrentSaveSlot, g_nTempCoronaId;
 
 enum ScriptEventList
 {
@@ -98,9 +99,9 @@ public:
 class PedExtVars
 {
 public:
-    static const int g_nTasksCacheSize = 64;
+    static const int MAX_TASKS_CACHE = 64;
 
-    int activeTasks[g_nTasksCacheSize];
+    int activeTasks[MAX_TASKS_CACHE];
     CEntity *killTargetPed;
     CEntity *lastDamageEntity;
     CVehicle* enterExitTargetCar;
@@ -131,7 +132,7 @@ public:
     void GrabFlags(CTask* task, int type, bool secondaryTask, int idx, CPed* ped); // ai.cpp
     inline bool HasTask(int task)
     {
-        for(int i = 0; i < g_nTasksCacheSize; ++i)
+        for(int i = 0; i < MAX_TASKS_CACHE; ++i)
         {
             if(activeTasks[i] == task) return true;
         }
@@ -204,6 +205,17 @@ extern float *m_radarRange;
 extern CWidget** m_pWidgets;
 extern int *windowSize;
 extern COnscreenTimer* OnscnTimer;
+extern uintptr_t *gpShadowCarTex, *gpShadowPedTex, *gpShadowHeliTex, *gpShadowBikeTex, *gpShadowBaronTex, *gpShadowExplosionTex,
+                 *gpShadowHeadLightsTex, *gpShadowHeadLightsTex2, *gpBloodPoolTex, *gpHandManTex, *gpCrackedGlassTex, *gpPostShadowTex;
+extern uintptr_t *gpCoronaTexture;
+extern CColourSet *m_CurrentColours;
+extern float *SunScreenX, *SunScreenY;
+extern int *m_CurrentStoredValue;
+extern CVector *m_VectorToSun;
+extern float *ms_fFarClipZ;
+extern int *ms_atomicPluginOffset;
+extern RwOpenGLVertex *maVertices;
+extern float *NearScreenZ;
 
 // Game funcs
 extern CObject* (*CreateObject)(int);
@@ -294,6 +306,28 @@ extern RwBool (*RwStreamClose)(RwStream*, void*);
 extern void (*ClearTasks)(CPedIntelligence*, bool, bool);
 extern CTask* (*GetSimplestActiveTask)(CTaskManager*);
 extern void (*CorrectAspect)(float&, float&, float&, float&);
+extern CMatrix* (*InvertMatrix)(const CMatrix *, CMatrix *);
+extern void (*StoreShadowToBeRendered)(UInt8, RwTexture *, CVector *, float, float, float, float, Int16, UInt8, UInt8, UInt8, float, bool, float, CRealTimeShadow *, bool);
+extern void (*AddPermanentShadow)(UInt8, RwTexture *, CVector *, float, float, float, float, Int16, UInt8, UInt8, UInt8, float, UInt32, float);
+extern void (*AddLight)(UInt8, CVector, CVector, float, float, float, float, UInt8, bool, CEntity *);
+extern void (*RegisterCorona)(uint,CEntity *,uint8_t,uint8_t,uint8_t,uint8_t,CVector *,float,float,RwTexture *,uint8_t,uint8_t,uint8_t,uint8_t,float,bool,float,bool,float,bool,bool);
+extern int (*LightForCars1_Visual)();
+extern int (*LightForCars2_Visual)();
+extern int (*GetLightStatus)(CDamageManager*, int);
+extern void (*SetLightStatus)(CDamageManager*, int, int);
+extern bool (*AddProjectile)(CEntity *,eWeaponType,CVector,float,CVector*,CEntity *);
+extern RwFrame* (*GetFrameFromName)(RpClump*, const char*);
+extern void (*SetComponentVisibility)(CVehicle*, RwFrame*, int);
+extern void (*RwFrameForAllObjects)(RwFrame*, RwObject*(*)(RwObject*, void*), void*);
+extern RwObject* (*SetComponentAtomicAlpha)(RwObject*, void*);
+extern const char* (*GetFrameNodeName)(RwFrame*);
+extern void (*RwRenderStateSet)(int, void*);
+extern void (*RwIm2DRenderPrimitive)(int, RwOpenGLVertex*, int);
+extern void (*SetMaskVertices)(int, float*, float);
+extern void (*SetVertices4)(int,float*,float*,CRGBA&);
+extern void (*SetVertices8)(float,float,float,float,float,float,float,float,CRGBA&,CRGBA&,CRGBA&,CRGBA&);
+extern void (*DrawAnyRect)(float,float,float,float,float,float,float,float,CRGBA&,CRGBA&,CRGBA&,CRGBA&);
+extern void (*SearchLightCone)(int,CVector,CVector,float,float,uint8_t,uint8_t,CVector*,CVector*,CVector*,bool,float,float,float,float);
 
 // All of CLEO functions
 CLEO_Fn(CREATE_OBJECT_NO_SAVE);
@@ -499,10 +533,60 @@ CLEO_Fn(GET_LOCAL_TIME);
 CLEO_Fn(SET_SCRIPT_VAR);
 CLEO_Fn(GET_SCRIPT_VAR);
 CLEO_Fn(SET_CAR_DOOR_WINDOW_STATE);
+CLEO_Fn(GET_ENTITY_TYPE_AND_CLASS);
+CLEO_Fn(GET_CAR_NUM_COLLIDED_ENTITIES);
+CLEO_Fn(GET_CHAR_NUM_COLLIDED_ENTITIES);
+CLEO_Fn(GET_OBJECT_NUM_COLLIDED_ENTITIES);
+CLEO_Fn(GET_CAR_COLLIDED_ENTITIES);
+CLEO_Fn(GET_CHAR_COLLIDED_ENTITIES);
+CLEO_Fn(GET_OBJECT_COLLIDED_ENTITIES);
+CLEO_Fn(FIND_INTERSECTION_BETWEEN_CIRCLES);
+CLEO_Fn(GET_MODEL_TXD_ID);
+CLEO_Fn(GET_MODEL_CRC);
+CLEO_Fn(DRAW_TEMPORARY_SHADOW);
+CLEO_Fn(DRAW_PERMANENT_SHADOW);
+CLEO_Fn(DRAW_TEMPORARY_LIGHT);
+CLEO_Fn(DRAW_TEMPORARY_CORONA);
+CLEO_Fn(DRAW_TEMPORARY_CORONA_EX);
+CLEO_Fn(GET_SUN_COLORS);
+CLEO_Fn(GET_SUN_SCREEN_COORS);
+CLEO_Fn(GET_SUN_WORLD_COORS);
+CLEO_Fn(GET_SUN_SIZE);
+CLEO_Fn(GET_TRAFFICLIGHTS_CURRENT_COLOR); 
+CLEO_Fn(DRAW_SPOTLIGHT);
+CLEO_Fn(GET_CAR_LIGHT_DAMAGE_STATUS);
+CLEO_Fn(SET_CAR_LIGHT_DAMAGE_STATUS);
+CLEO_Fn(GET_VEHICLE_CLASS_AND_SUBCLASS);
+CLEO_Fn(GET_VEHICLE_DUMMY_POSN);
+CLEO_Fn(CREATE_PROJECTILE);
+CLEO_Fn(GET_GAME_VOLUME);
+CLEO_Fn(GET_SCREEN_WIDTH_AND_HEIGHT);
+CLEO_Fn(GET_CAR_COMPONENT_MATRIX);
+CLEO_Fn(GET_CAR_COMPONENT);
+CLEO_Fn(SET_CAR_COMPONENT_STATE);
+CLEO_Fn(SET_CAR_COMPONENT_MODEL_ALPHA);
+CLEO_Fn(GET_COMPONENT_CHILD_COMPONENT);
+CLEO_Fn(GET_COMPONENT_NEXT_COMPONENT);
+CLEO_Fn(GET_COMPONENT_NAME);
+CLEO_Fn(GET_COMPONENT_WORLD_MATRIX);
+CLEO_Fn(GET_COMPONENT_MODELLING_MATRIX);
+CLEO_Fn(GET_COMPONENT_PARENT_COMPONENT);
+CLEO_Fn(GET_COMPONENT_NUM_OBJECTS);
+CLEO_Fn(GET_COMPONENT_OBJECT);
+CLEO_Fn(HIDE_OBJECT_ATOMIC);
+CLEO_Fn(GET_OBJECT_ATOMIC_FLAG);
+CLEO_Fn(SET_OBJECT_ATOMIC_FLAG);
+CLEO_Fn(GET_OBJECT_ATOMIC_NUM_MATERIALS); 
+CLEO_Fn(GET_OBJECT_ATOMIC_MATERIAL_TEXTURE);
 CLEO_Fn(DRAW_TEXTURE_PLUS);
 CLEO_Fn(GET_TEXTURE_FROM_SPRITE);
 CLEO_Fn(DRAW_STRING);
 CLEO_Fn(DRAW_STRING_EXT);
+CLEO_Fn(DRAW_SHAPE);
+CLEO_Fn(SETUP_SHAPE_VERTEX);
+CLEO_Fn(ROTATE_SHAPE_VERTICES);
+CLEO_Fn(DRAW_2D_SPRITE);
+CLEO_Fn(DRAW_2D_SPRITE_WITH_GRADIENT);
 CLEO_Fn(QUAT_SLERP);
 CLEO_Fn(SET_MATRIX_ROTATION_FROM_QUAT);
 CLEO_Fn(SET_QUAT_FROM_MATRIX);
@@ -527,6 +611,19 @@ CLEO_Fn(CLAMP_INT);
 CLEO_Fn(CONVERT_DIRECTION_TO_QUAT);
 CLEO_Fn(LERP);
 CLEO_Fn(SET_MATRIX_LOOK_DIRECTION);
+CLEO_Fn(SET_MATRIX_POSITION);
+CLEO_Fn(GET_MATRIX_POSITION);
+CLEO_Fn(GET_COORDS_OFFSETS_RELATIVELY_TO_MATRIX);
+CLEO_Fn(SET_MATRIX_ROTATION);
+CLEO_Fn(COPY_MATRIX);
+CLEO_Fn(SET_MATRIX_X_ROTATION);
+CLEO_Fn(SET_MATRIX_Y_ROTATION);
+CLEO_Fn(SET_MATRIX_Z_ROTATION);
+CLEO_Fn(INTERPOLATE_MATRIX);
+CLEO_Fn(INITIALISE_MATRIX);
+CLEO_Fn(NORMALISE_VECTOR);
+CLEO_Fn(INITIALISE_VECTOR);
+CLEO_Fn(GET_VECTOR_ELEMENTS);
 CLEO_Fn(GET_AUDIO_SFX_VOLUME);
 CLEO_Fn(GET_AUDIO_RADIO_VOLUME);
 CLEO_Fn(GET_AUDIOSTREAM_INTERNAL);
@@ -584,6 +681,7 @@ CLEO_Fn(GET_COLPOINT_SURFACE);
 CLEO_Fn(GET_COLPOINT_DEPTH);
 CLEO_Fn(GET_COLPOINT_LIGHTING);
 CLEO_Fn(GET_COLPOINT_COORDINATES);
+CLEO_Fn(GET_COL_DATA_LIGHTING);
 CLEO_Fn(CREATE_LIST);
 CLEO_Fn(DELETE_LIST);
 CLEO_Fn(LIST_ADD);
@@ -626,11 +724,22 @@ inline PedExtVars* GetExtData(CPed* ped)
         auto size = (*ms_pPedPool)->m_nSize;
         ms_pPedExtVarsPool = new CPool<PedExtVars>(size, "PedExtVars");
         ms_pPedExtVarsPool->m_nFirstFree = size;
-        for(int i = 0; i < size; ++i) ms_pPedExtVarsPool->m_byteMap[i].bEmpty = false;
+        for(int i = 0; i < size; ++i)
+        {
+            ms_pPedExtVarsPool->m_byteMap[i].bEmpty = false;
+            memset(&ms_pPedExtVarsPool->m_pObjects[i], 0, sizeof(PedExtVars));
+
+            std::vector<RenderObject*>* pRenderObjects = &ms_pPedExtVarsPool->m_pObjects[i].renderObjects;
+            new(pRenderObjects) std::vector<RenderObject*>();
+            
+            std::list<ExtendedVars*>* pExtendedVarsList = &ms_pPedExtVarsPool->m_pObjects[i].extendedVarsList;
+            new(pExtendedVarsList) std::list<ExtendedVars*>();
+        }
     }
-    return ms_pPedExtVarsPool->GetAt((*ms_pPedPool)->GetIndex(ped));
+    int idx = (GetPedRef(ped) >> 8);
+    return ms_pPedExtVarsPool->GetAt(idx);
 }
-inline VehicleExtVars* GetExtData(CVehicle* ped)
+inline VehicleExtVars* GetExtData(CVehicle* veh)
 {
     if(!ms_pVehicleExtVarsPool)
     {
@@ -638,11 +747,18 @@ inline VehicleExtVars* GetExtData(CVehicle* ped)
         auto size = (*ms_pVehiclePool)->m_nSize;
         ms_pVehicleExtVarsPool = new CPool<VehicleExtVars>(size, "VehicleExtVars");
         ms_pVehicleExtVarsPool->m_nFirstFree = size;
-        for(int i = 0; i < size; ++i) ms_pVehicleExtVarsPool->m_byteMap[i].bEmpty = false;
+        for(int i = 0; i < size; ++i)
+        {
+            ms_pVehicleExtVarsPool->m_byteMap[i].bEmpty = false;
+            memset(&ms_pVehicleExtVarsPool->m_pObjects[i], 0, sizeof(VehicleExtVars));
+            std::list<ExtendedVars*>* pExtendedVarsList = &ms_pVehicleExtVarsPool->m_pObjects[i].extendedVarsList;
+            new(pExtendedVarsList) std::list<ExtendedVars*>();
+        }
     }
-    return ms_pVehicleExtVarsPool->GetAt((*ms_pVehiclePool)->GetIndex(ped));
+    int idx = (GetVehicleRef(veh) >> 8);
+    return ms_pVehicleExtVarsPool->GetAt(idx);
 }
-inline ObjectExtVars* GetExtData(CObject* ped)
+inline ObjectExtVars* GetExtData(CObject* obj)
 {
     if(!ms_pObjectExtVarsPool)
     {
@@ -650,11 +766,18 @@ inline ObjectExtVars* GetExtData(CObject* ped)
         auto size = (*ms_pObjectPool)->m_nSize;
         ms_pObjectExtVarsPool = new CPool<ObjectExtVars>(size, "ObjectExtVars");
         ms_pObjectExtVarsPool->m_nFirstFree = size;
-        for(int i = 0; i < size; ++i) ms_pObjectExtVarsPool->m_byteMap[i].bEmpty = false;
+        for(int i = 0; i < size; ++i)
+        {
+            ms_pObjectExtVarsPool->m_byteMap[i].bEmpty = false;
+            memset(&ms_pObjectExtVarsPool->m_pObjects[i], 0, sizeof(ObjectExtVars));
+            std::list<ExtendedVars*>* pExtendedVarsList = &ms_pObjectExtVarsPool->m_pObjects[i].extendedVarsList;
+            new(pExtendedVarsList) std::list<ExtendedVars*>();
+        }
     }
-    return ms_pObjectExtVarsPool->GetAt((*ms_pObjectPool)->GetIndex(ped));
+    int idx = (GetObjectRef(obj) >> 8);
+    return ms_pObjectExtVarsPool->GetAt(idx);
 }
-inline ExtendedVars *FindExtendedVarsFromId(std::list<ExtendedVars*> extendedVarsList, uint32_t findId)
+inline ExtendedVars* FindExtendedVarsFromId(std::list<ExtendedVars*>& extendedVarsList, uint32_t findId)
 {
     for (ExtendedVars* extendedVars : extendedVarsList)
     {
@@ -666,11 +789,4 @@ inline void FixAspectRatio(float *x, float *y)
 {
     float trashVar = 0.0f;
     CorrectAspect(*x, *y, trashVar, trashVar);
-    /*float resX = (float)RsGlobal->maximumWidth;
-    float resY = (float)RsGlobal->maximumHeight;
-    resY *= 1.33333333f;
-    resX /= resY;
-    
-    *x /= resX;
-    *y /= 1.07142857f;*/
 }

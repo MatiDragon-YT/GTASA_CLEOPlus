@@ -2,11 +2,14 @@
 #include <mod/logger.h>
 #include "externs.h"
 
-MYMOD(net.juniordjjr.rusjj.cleoplus, CLEOPlus, 1.0.1, JuniorDjjr & RusJJ)
+#include <cleoplus/drawing.h>
+#include <newopcodes/drawing.h>
+
+MYMOD(net.juniordjjr.rusjj.cleoplus, CLEOPlus, 1.1, JuniorDjjr & RusJJ)
 NEEDGAME(com.rockstargames.gtasa)
 BEGIN_DEPLIST()
-    ADD_DEPENDENCY_VER(net.rusjj.aml, 1.2.3)
-    ADD_DEPENDENCY_VER(net.rusjj.cleolib, 2.0.1.7)
+    ADD_DEPENDENCY_VER(net.rusjj.aml, 1.3.0)
+    ADD_DEPENDENCY_VER(net.rusjj.cleolib, 2.0.1.9)
 END_DEPLIST()
 
 // Savings
@@ -27,13 +30,13 @@ DECL_HOOKv(OnGameProcess)
 {
     if(!*m_UserPause && !*m_CodePause) pausedLastFrame = false;
     for (auto scriptEvent : scriptEvents[ScriptEventList::BeforeGameProcess]) scriptEvent->RunScriptEvent();
-    auto size = (*ms_pPedPool)->m_nSize;
+    const int size = (*ms_pPedPool)->m_nSize;
     for(int i = 0; i < size; ++i)
     {
         CPed* ped = (*ms_pPedPool)->GetAt(i);
         if(ped)
         {
-            auto xdata = GetExtData(ped);
+            PedExtVars* xdata = GetExtData(ped);
             if(xdata) xdata->GrabTasks(ped);
         }
     }
@@ -56,8 +59,7 @@ DECL_HOOKv(GameInitReInit)
 {
     GameInitReInit();
 
-    extern void ClearAllCLEOTextures();
-    ClearAllCLEOTextures();
+    CLEOTexture::ClearAll();
 
     extern void ClearAllCLEOBlips();
     ClearAllCLEOBlips();
@@ -66,10 +68,71 @@ DECL_HOOKv(GameInitReInit)
     void ClearScriptLists();
 
     ScriptEvent::ClearAllScriptEvents();
+
+    g_nTempCoronaId = 10000;
+}
+DECL_HOOKv(DefaultDraw)
+{
+    CLEOTexture::DrawAll(BeforeDrawing);
+
+    DefaultDraw();
+
+    ShapeDrawer::DrawAll();
+    // TextDrawer::DrawAll();
+    SpriteDrawer::DrawAll();
+    CLEOTexture::DrawAll(AfterDrawing);
+}
+DECL_HOOKv(BeforeScriptsProcessing)
+{
+    g_nTempCoronaId = 10000;
+    ShapeDrawer::m_nShapes = 0;
+    // TextDrawer::m_nTexts = 0;
+    SpriteDrawer::m_nSprites = 0;
+    SpotLightDrawer::m_nSpotLights = 0;
+
+    BeforeScriptsProcessing();
+}
+DECL_HOOKv(BeforeHUDDraw)
+{
+    BeforeHUDDraw();
+    CLEOTexture::DrawAll(BeforeHud);
+}
+DECL_HOOKv(AfterHUDDraw)
+{
+    AfterHUDDraw();
+    CLEOTexture::DrawAll(AfterHud);
+}
+DECL_HOOKv(RadarDraw)
+{
+    CLEOTexture::DrawAll(BeforeRadar);
+    RadarDraw();
+    CLEOTexture::DrawAll(AfterRadar);
+}
+DECL_HOOKv(RadarOverlayDraw)
+{
+    CLEOTexture::DrawAll(BeforeRadarOverlay);
+    RadarOverlayDraw();
+    CLEOTexture::DrawAll(AfterRadarOverlay);
+}
+DECL_HOOKv(RadarBlipsDraw)
+{
+    CLEOTexture::DrawAll(BeforeBlips);
+    RadarBlipsDraw();
+    CLEOTexture::DrawAll(AfterBlips);
+}
+DECL_HOOKv(AfterFadeDraw)
+{
+    CLEOTexture::DrawAll(AfterFade);
+    AfterFadeDraw();
+}
+DECL_HOOKv(RenderAllSearchLights)
+{
+    RenderAllSearchLights();
+    SpotLightDrawer::DrawAll();
 }
 
 // int main!
-extern "C" void OnModLoad()
+ON_ALL_MODS_LOAD()
 {
     logger->SetTag("CLEOPlus");
     pGTASA =    aml->GetLib("libGTASA.so");
@@ -80,10 +143,19 @@ extern "C" void OnModLoad()
     ResolveExternals();
 
     // Hooks
-    HOOKPLT(OnGameProcess,                 pGTASA + 0x66FE58);
-    HOOKPLT(DoGameSpecificStuffBeforeSave, pGTASA + 0x66EC5C);
-    HOOKPLT(MobileMenuRender,              pGTASA + 0x674254);
-    HOOKPLT(GameInitReInit,                pGTASA + 0x672014);
+    HOOKPLT(OnGameProcess,                  pGTASA + 0x66FE58);
+    HOOKPLT(DoGameSpecificStuffBeforeSave,  pGTASA + 0x66EC5C);
+    HOOKPLT(MobileMenuRender,               pGTASA + 0x674254);
+    HOOKPLT(GameInitReInit,                 pGTASA + 0x672014);
+    HOOKPLT(DefaultDraw,                    pGTASA + 0x675CC4);
+    HOOKPLT(BeforeScriptsProcessing,        pGTASA + 0x673178);
+    HOOKPLT(BeforeHUDDraw,                  pGTASA + 0x67058C);
+    HOOKPLT(AfterHUDDraw,                   pGTASA + 0x67589C);
+    HOOKPLT(RadarDraw,                      pGTASA + 0x66F618);
+    HOOKPLT(RadarOverlayDraw,               pGTASA + 0x67196C);
+    HOOKPLT(RadarBlipsDraw,                 pGTASA + 0x66E910);
+    HOOKPLT(AfterFadeDraw,                  pGTASA + 0x673C4C);
+    HOOKPLT(RenderAllSearchLights,          pGTASA + 0x6742D8);
 
     // NoSave
     CLEO_RegisterOpcode(0x0E01, CREATE_OBJECT_NO_SAVE); // 0E01=7,create_object_no_save %1o% at %2d% %3d% %4d% offset %5d% ground %6d% to %7d%
@@ -312,12 +384,62 @@ extern "C" void OnModLoad()
     CLEO_RegisterOpcode(0x0D2E, SET_SCRIPT_VAR); // 0D2E=3,set_script %1d% var %2d% value %3d%
     CLEO_RegisterOpcode(0x0D2F, GET_SCRIPT_VAR); // 0D2F=3,%3d% = get_script %1d% var %2d%
     CLEO_RegisterOpcode(0x0D33, SET_CAR_DOOR_WINDOW_STATE); // 0D33=3,set_car %1d% door %2d% window_state %3d%
+    CLEO_RegisterOpcode(0x0D1B, GET_ENTITY_TYPE_AND_CLASS); // 0D1B=2,get_entity %1d% type_to %2d% class_to %3d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D2A, GET_CAR_NUM_COLLIDED_ENTITIES); // 0D2A=2,%2d% = get_car %1d% number_of_collided_entites // newOpcodes
+    CLEO_RegisterOpcode(0x0D2B, GET_CHAR_NUM_COLLIDED_ENTITIES); // 0D2B=2,%2d% = get_actor %1d% number_of_collided_entites // newOpcodes
+    CLEO_RegisterOpcode(0x0D2C, GET_OBJECT_NUM_COLLIDED_ENTITIES); // 0D2C=2,%2d% = get_object %1d% number_of_collided_entites // newOpcodes
+    CLEO_RegisterOpcode(0x0D34, GET_CAR_COLLIDED_ENTITIES); // 0D34=7,store_car %1d% collided_entities_to %2d% %3d% %4d% %5d% %6d% %7d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D35, GET_CHAR_COLLIDED_ENTITIES); // 0D35=7,store_actor %1d% collided_entities_to %2d% %3d% %4d% %5d% %6d% %7d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D36, GET_OBJECT_COLLIDED_ENTITIES); // 0D36=7,store_object %1d% collided_entities_to %2d% %3d% %4d% %5d% %6d% %7d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D3F, FIND_INTERSECTION_BETWEEN_CIRCLES); // 0D3F=10,find_intersection_between_circles_xyr1 %1d% %2d% %3d% and_xyr2 %4d% %5d% %6d% store_point1_to %7d% %8d% point2_to %9d% %10d% // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D47, GET_MODEL_TXD_ID); // 0D47=2,%2d% = model %1d% txd_id // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D48, GET_MODEL_CRC); // 0D48=2,%2d% = model %1d% crc32_key // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D50, DRAW_TEMPORARY_SHADOW); // 0D50=14,draw_shadow_type %1d% position %2d% %3d% %4d% width %5d% height %6d% rotation %7d% distance %8d% texture %9d% intensity %10d% RGB %11d% %12d% %13d% shadow_data %14d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D51, DRAW_PERMANENT_SHADOW); // 0D51=14,draw_permanent_shadow_type %1d% position %2d% %3d% %4d% width %5d% height %6d% rotation %7d% distance %8d% texture %9d% intensity %10d% RGB %11d% %12d% %13d% time %14d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D52, DRAW_TEMPORARY_LIGHT); // 0D52=12,draw_light_type %1d% position %2d% %3d% %4d% direction %5d% %6d% %7d% radius %8d% RGB %9d% %10d% %11d% affect_entity %12d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D53, DRAW_TEMPORARY_CORONA); // 0D53=10,draw_corona_with_texture %1d% color %2d% %3d% %4d% %5d% on_entity %6d% at %7d% %8d% %9d% size %10d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D54, DRAW_TEMPORARY_CORONA_EX); // 0D54=18,draw_corona_with_extra_params_texture %1d% color %2d% %3d% %4d% %5d% on_entity %6d% at %7d% %8d% %9d% size %10d% far_clip %11d% near_clip %12d% flare %13d% enable_reflection %14d% check_obstacles %15d% flash_while_fading %16d% fade_speed %17d% only_from_below %18d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D55, GET_SUN_COLORS); // 0D55=6,get_sun_colors_core_to %1d% %2d% %3d% glow_to %4d% %5d% %6d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D56, GET_SUN_SCREEN_COORS); // 0D56=2,get_sun_screen_coords_XY_to %1d% %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D57, GET_SUN_WORLD_COORS); // 0D57=3,get_sun_position_to %1d% %2d% %3d% // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D58, GET_SUN_SIZE); // 0D58=2,get_sun_size_core_to %1d% glow_to %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D5A, GET_TRAFFICLIGHTS_CURRENT_COLOR); // 0D5A=2,get_trafficlights_type_NS_current_color_to %1d% type_WE_current_color_to %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D5C, GET_CAR_LIGHT_DAMAGE_STATUS); // 0D5C=3,%3d% =  get_car %1d% light %2d% damage_state // newOpcodes
+    CLEO_RegisterOpcode(0x0D5D, SET_CAR_LIGHT_DAMAGE_STATUS); // 0D5D=3,set_car %1d% light %2d% damage_state %3d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D5E, GET_VEHICLE_CLASS_AND_SUBCLASS); // 0D5E=3,get_vehicle %1d% class_to %2d% subclass_to %3d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D5F, GET_VEHICLE_DUMMY_POSN); // 0D5F=7,get_vehicle %1d% dummy_element %2d% position %3d% to %5d% %6d% %7d% %4d% // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D60, CREATE_PROJECTILE); // 0D60=10,create_projectile_type %1d% launched_from_entity %2d% origin %3d% %4d% %5d% target %6d% %7% %8d% target_entity %9d% force %10d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D72, GET_GAME_VOLUME); // 0D72=3,get_sfx_volume_to %2d% radio_volume_to %3d% type %1d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D73, GET_SCREEN_WIDTH_AND_HEIGHT); // 0D73=3,get_screen_width_to %2d% height_to %3d% type %1d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D0C, GET_CAR_COMPONENT_MATRIX); // 0D0C=3,get_car %1d% component %2s% matrix_to %3d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D0D, GET_CAR_COMPONENT); // 0D0D=3,%3d% = get_car %1d% component %2s% // newOpcodes
+    CLEO_RegisterOpcode(0x0D0E, SET_CAR_COMPONENT_STATE); // 0D0E=3,set_car %1d% component %2s% state %3d% // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D12, SET_CAR_COMPONENT_MODEL_ALPHA); // 0D12=3,set_car %1d% component %2s% model_alpha %3d% // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D1F, GET_COMPONENT_CHILD_COMPONENT); // 0D1F=2,%2d% = component %1d% child // newOpcodes
+    CLEO_RegisterOpcode(0x0D20, GET_COMPONENT_NEXT_COMPONENT); // 0D20=2,%2d% = component %1d% next_component // newOpcodes
+    CLEO_RegisterOpcode(0x0D21, GET_COMPONENT_NAME); // 0D21=2,%2s% = component %1d% name // newOpcodes
+    CLEO_RegisterOpcode(0x0D22, GET_COMPONENT_WORLD_MATRIX); // 0D22=2,%2d% = component %1d% world_matrix // newOpcodes
+    CLEO_RegisterOpcode(0x0D23, GET_COMPONENT_MODELLING_MATRIX); // 0D23=2,%2d% = component %1d% modelling_matrix // newOpcodes
+    CLEO_RegisterOpcode(0x0D74, GET_COMPONENT_PARENT_COMPONENT); // 0D74=2,%2d% = component %1d% parent_component // newOpcodes
+    CLEO_RegisterOpcode(0x0D75, GET_COMPONENT_NUM_OBJECTS); // 0D75=2,%2d% = component %1d% num_objects // newOpcodes
+    CLEO_RegisterOpcode(0x0D76, GET_COMPONENT_OBJECT); // 0D76=3,%3d% = component %1d% object %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D77, HIDE_OBJECT_ATOMIC); // 0D77=2,object_atomic %1d% hide %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D78, GET_OBJECT_ATOMIC_FLAG); // 0D78=3,%3d% = get_object %1d% atomic_flag %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D79, SET_OBJECT_ATOMIC_FLAG); // 0D79=3,set_object %1d% atomic_flag %2d% state %3d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D7A, GET_OBJECT_ATOMIC_NUM_MATERIALS); // 0D7A=2,%2d% = get_object %1d% num_materials // IF and SET // newOpcodes
+    CLEO_RegisterOpcode(0x0D7B, GET_OBJECT_ATOMIC_MATERIAL_TEXTURE); // 0D7B=3,%3d% = get_object %1d% material %2d% texture // newOpcodes
 
     // Drawing
-    //CLEO_RegisterOpcode(0x0E1E, DRAW_TEXTURE_PLUS); // 0E1E=15,draw_texture_plus %1d% event %2d% pos %3d% %4d% size %5d% %6d% angle %7d% depth %8d% fix_aspect_ratio %9d% maskTrisCount %10d% maskTrisArray %11d% rgba %12d% %13d% %14d% %15d% 
+    CLEO_RegisterOpcode(0x0E1E, DRAW_TEXTURE_PLUS); // 0E1E=15,draw_texture_plus %1d% event %2d% pos %3d% %4d% size %5d% %6d% angle %7d% depth %8d% fix_aspect_ratio %9d% maskTrisCount %10d% maskTrisArray %11d% rgba %12d% %13d% %14d% %15d% 
     CLEO_RegisterOpcode(0x0E3C, GET_TEXTURE_FROM_SPRITE); // 0E3C=2,get_texture_from_sprite %1d% store_to %2d%
-    //CLEO_RegisterOpcode(0x0E62, DRAW_STRING); // 0E62=8,print %1s% event %2d% at %3d% %4d% scale %5d% %6d% fixAR %7d% style %8d%
-    //CLEO_RegisterOpcode(0x0E63, DRAW_STRING_EXT); // 0E63=27,print %1s% event %2d% at %3d% %4d% scale %5d% %6d% fixAR %7d% style %8d% prop %9d% align %10d% wrap %11d% justify %12d% color %13d% %14d% %15d% %16d% outline %17d% shadow %18d% dropColor %19d% %20d% %21d% %22d% background %23d% backColor %24d% %25d% %26d% %27d%
+    CLEO_RegisterOpcode(0x0E62, DRAW_STRING); // 0E62=8,print %1s% event %2d% at %3d% %4d% scale %5d% %6d% fixAR %7d% style %8d%
+    CLEO_RegisterOpcode(0x0E63, DRAW_STRING_EXT); // 0E63=27,print %1s% event %2d% at %3d% %4d% scale %5d% %6d% fixAR %7d% style %8d% prop %9d% align %10d% wrap %11d% justify %12d% color %13d% %14d% %15d% %16d% outline %17d% shadow %18d% dropColor %19d% %20d% %21d% %22d% background %23d% backColor %24d% %25d% %26d% %27d%
+    CLEO_RegisterOpcode(0x0D40, DRAW_SHAPE); // 0D40=8,draw_2d_shape_type %3d% texture %4d% numVerts %2d% pVerts %1d% vertexAlpha %5d% srcBlend %6d% dstBlend %7d% _unused %8d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D41, SETUP_SHAPE_VERTEX); // 0D41=14,set_vertices %1d% vertex %2d% xyz %5d% %6d% %7d% rhw %8d% RGBA %9d% %10d% %11d% %12d% uv %13d% %14d% invertX %3d% invertY %4d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D45, ROTATE_SHAPE_VERTICES); // 0D45=5,rotate_2d_vertices_shape %1d% num_verts %2d% aroundXY %3d% %4d% angle %5d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D7E, DRAW_2D_SPRITE); // 0D7E=11,draw_sprite_with_texture %1d% at_cornerA %2d% %3d% cornerB %4d% %5d% color %6d% %7d% %8d% %9d% angle %10d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D7F, DRAW_2D_SPRITE_WITH_GRADIENT); // 0D7F=22,draw_gradient_sprite_with_texture %1d% at_cornerA %2d% %3d% cornerB %4d% %5d% colors %6d% %7d% %8d% %9d%  %10d% %11d% %12d% %13d%  %14d% %15d% %16d% %17d%  %18d% %19d% %20d% %21d% angle %22d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D5B, DRAW_SPOTLIGHT); // 0D5B=12,draw_spotlight_from %1d% %2d% %3d% to %4d% %5d% %6d% base_radius %7d% target_radius %8d% enable_shadow %9d% shadow_intensity %10d% flag1 %11d% flag2 %12d% // newOpcodes
 
     // Math
     CLEO_RegisterOpcode(0x0D1E, QUAT_SLERP); // 0D1E=4,quat_slerp %1d% to %2d% lambda %3d% result %4d%
@@ -344,6 +466,19 @@ extern "C" void OnModLoad()
     CLEO_RegisterOpcode(0x0EB3, CONVERT_DIRECTION_TO_QUAT); // 0EB3=4,convert_direction_to_quat %1d% dir %2d% %3d% %4d%
     CLEO_RegisterOpcode(0x0EF3, LERP); // 0EF3=4,lerp %1d% %2d% %3d% store_to %4d%
     CLEO_RegisterOpcode(0x0F0D, SET_MATRIX_LOOK_DIRECTION); // 0F0D=7,set_matrix_look_direction %1d% origin %2d% %3d% %4d% dir %5d% %6d% %7d%
+    CLEO_RegisterOpcode(0x0D05, SET_MATRIX_POSITION); // 0D05=4,set_matrix %1d% position %2d% %3d% %4d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D06, GET_MATRIX_POSITION); // 0D06=4,get_matrix %1d% position_to %2d% %3d% %4d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D07, GET_COORDS_OFFSETS_RELATIVELY_TO_MATRIX); // 0D07=7,get_coords %1d% %2d% %3d% offsets_relative_to_matrix %4d% store_to %5d% %6d% %7d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D08, SET_MATRIX_ROTATION); // 0D08=4,set_matrix %1d% rotation %2d% %3d% %4d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D09, COPY_MATRIX); // 0D09=2,copy_matrix %1d% to %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D13, SET_MATRIX_X_ROTATION); // 0D13=3,set_matrix %1d% x_angle %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D14, SET_MATRIX_Y_ROTATION); // 0D14=3,set_matrix %1d% y_angle %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D15, SET_MATRIX_Z_ROTATION); // 0D15=3,set_matrix %1d% z_angle %2d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D1D, INTERPOLATE_MATRIX); // 0D1D=4,matrix_slerp %1d% from_matrix %2d% to_matrix %3d% t %4d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D25, INITIALISE_MATRIX); // 0D25=17,set_matrix %1d% elements %2d% %3d% %4d% %5d% %6d% %7d% %8d% %9d% %10d% %11d% %12d% %13d% %14d% %15d% %16d% %17d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D1C, NORMALISE_VECTOR); // 0D1C=1,normalize_vector %1d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D26, INITIALISE_VECTOR); // 0D26=4,set_vector %1d% elements %2d% %3d% %4d% // newOpcodes
+    CLEO_RegisterOpcode(0x0D28, GET_VECTOR_ELEMENTS); // 0D28=4,get_vector %1d% elements_to %2d% %3d% %4d% // newOpcodes
 
     // Audio
     CLEO_RegisterOpcode(0x0E21, GET_AUDIO_SFX_VOLUME); // 0E21=1,get_audio_sfx_volume %1d%
@@ -421,6 +556,7 @@ extern "C" void OnModLoad()
     CLEO_RegisterOpcode(0x0D3E, GET_COLPOINT_DEPTH); // 0D3E=2,get_colpoint_depth %1d% store_to %2d%
     CLEO_RegisterOpcode(0x0E6B, GET_COLPOINT_LIGHTING); // 0E6B=3,get_colpoint_lighting %1d% from_night %2d% store_to %3d%
     CLEO_RegisterOpcode(0x0EE1, GET_COLPOINT_COORDINATES); // 0EE1=4,get_colpoint_coordinates %1d% store_to %2d% %3d% %4d%
+    CLEO_RegisterOpcode(0x0D3D, GET_COL_DATA_LIGHTING); // 0D3D=2,get_colpoint_data %1d% lighting_to %2d% // newOpcodes
 
     // List
     CLEO_RegisterOpcode(0x0E72, CREATE_LIST); // 0E72=2,create_list %1d% store_to %2d%

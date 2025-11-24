@@ -4,6 +4,29 @@ int timesGameRestarted = 0;
 const int maxDffFiles = 50000;
 char modelNames[maxDffFiles][32];
 
+struct AtomicSearchInfo
+{
+    unsigned int counter;
+    unsigned int number;
+    RpAtomic *result;
+};
+RwObject *CountObjectsInFrame(RwObject *atomic, void *data)
+{
+    unsigned int* counter = (unsigned int*)data;
+    ++(counter);
+    return atomic;
+}
+RwObject *GetObjectInFrame(RwObject *atomic, void *data)
+{
+    AtomicSearchInfo* si = (AtomicSearchInfo*)data;
+    if(si->counter == si->number)
+    {
+        si->result = (RpAtomic*)atomic;
+        return NULL;
+    }
+    ++(si->counter);
+    return atomic;
+}
 inline void TransformFromObjectSpace(CEntity* self, CVector& outPos, const CVector& offset)
 {
     if(self->m_matrix)
@@ -883,7 +906,7 @@ CLEO_Fn(GET_CHAR_DAMAGE_LAST_FRAME)
 
     if(ped)
     {
-        auto xdata = GetExtData(ped);
+        PedExtVars* xdata = GetExtData(ped);
         if(xdata)
         {
             if(xdata->lastDamageEntity)
@@ -910,7 +933,7 @@ CLEO_Fn(GET_CAR_WEAPON_DAMAGE_LAST_FRAME)
 
     if(veh)
     {
-        auto xdata = GetExtData(veh);
+        VehicleExtVars* xdata = GetExtData(veh);
         if(xdata)
         {
             if(xdata->lastDamageEntity)
@@ -1486,6 +1509,654 @@ CLEO_Fn(SET_CAR_DOOR_WINDOW_STATE)
     {
         ClearWindowOpenFlag(vehicle, door);
     }
+}
+CLEO_Fn(GET_ENTITY_TYPE_AND_CLASS) // newOpcodes
+{
+    CEntity *entity = (CEntity*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = entity->m_nType;
+    cleo->GetPointerToScriptVar(handle)->i = entity->vtable();
+}
+CLEO_Fn(GET_CAR_NUM_COLLIDED_ENTITIES) // newOpcodes
+{
+    CVehicle *vehicle = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    cleo->GetPointerToScriptVar(handle)->i = vehicle->m_nNumEntitiesCollided;
+}
+CLEO_Fn(GET_CHAR_NUM_COLLIDED_ENTITIES) // newOpcodes
+{
+    CPed *ped = GetPedFromRef(cleo->ReadParam(handle)->i);
+    cleo->GetPointerToScriptVar(handle)->i = ped->m_nNumEntitiesCollided;
+}
+CLEO_Fn(GET_OBJECT_NUM_COLLIDED_ENTITIES) // newOpcodes
+{
+    CObject *object = GetObjectFromRef(cleo->ReadParam(handle)->i);
+    cleo->GetPointerToScriptVar(handle)->i = object->m_nNumEntitiesCollided;
+}
+CLEO_Fn(GET_CAR_COLLIDED_ENTITIES) // newOpcodes
+{
+    CVehicle *entity = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    for(int i = 0; i < 6; ++i)
+    {
+        cleo->GetPointerToScriptVar(handle)->i = (int)entity->m_apCollidedEntities[i];
+    }
+}
+CLEO_Fn(GET_CHAR_COLLIDED_ENTITIES) // newOpcodes
+{
+    CPed *entity = GetPedFromRef(cleo->ReadParam(handle)->i);
+    for(int i = 0; i < 6; ++i)
+    {
+        cleo->GetPointerToScriptVar(handle)->i = (int)entity->m_apCollidedEntities[i];
+    }
+}
+CLEO_Fn(GET_OBJECT_COLLIDED_ENTITIES) // newOpcodes
+{
+    CObject *entity = GetObjectFromRef(cleo->ReadParam(handle)->i);
+    for(int i = 0; i < 6; ++i)
+    {
+        cleo->GetPointerToScriptVar(handle)->i = (int)entity->m_apCollidedEntities[i];
+    }
+}
+CLEO_Fn(FIND_INTERSECTION_BETWEEN_CIRCLES) // newOpcodes
+{
+    // Circle's collision detection algorithm
+    float x0, y0, r0, x1, y1, r1, a, dx, dy, d, h, rx, ry, x2, y2;
+
+    x0 = cleo->ReadParam(handle)->f;
+    y0 = cleo->ReadParam(handle)->f;
+    r0 = cleo->ReadParam(handle)->f;
+
+    x1 = cleo->ReadParam(handle)->f;
+    y1 = cleo->ReadParam(handle)->f;
+    r1 = cleo->ReadParam(handle)->f;
+ 
+    dx = x1 - x0;
+    dy = y1 - y0;
+
+    d = hypotf(dx, dy);
+    if( (d > (r0 + r1)) || (d < fabsf(r0 - r1)) )
+    {
+        cleo->GetPointerToScriptVar(handle)->f = 0.0f;
+        cleo->GetPointerToScriptVar(handle)->f = 0.0f;
+        cleo->GetPointerToScriptVar(handle)->f = 0.0f;
+        cleo->GetPointerToScriptVar(handle)->f = 0.0f;
+        cleoaddon->UpdateCompareFlag(handle, false);
+        return;
+    }
+
+    a = ((r0 * r0) - (r1 * r1) + (d * d)) / (2.0f * d);
+    x2 = x0 + (dx * a / d);
+    y2 = y0 + (dy * a / d);
+    h = sqrtf((r0 * r0) - (a * a));
+    rx = -dy * (h / d);
+    ry = dx * (h / d);
+    cleo->GetPointerToScriptVar(handle)->f = x2 + rx;
+    cleo->GetPointerToScriptVar(handle)->f = y2 + ry;
+    cleo->GetPointerToScriptVar(handle)->f = x2 - rx;
+    cleo->GetPointerToScriptVar(handle)->f = y2 - ry;
+    cleoaddon->UpdateCompareFlag(handle, true);
+}
+CLEO_Fn(GET_MODEL_TXD_ID) // newOpcodes
+{
+    int model = cleo->ReadParam(handle)->i;
+    CBaseModelInfo* mi = ms_modelInfoPtrs[model];
+    cleo->GetPointerToScriptVar(handle)->i = (mi ? mi->m_nTxdIndex : -1);
+    cleoaddon->UpdateCompareFlag(handle, mi != NULL);
+}
+CLEO_Fn(GET_MODEL_CRC) // newOpcodes
+{
+    int model = cleo->ReadParam(handle)->i;
+    CBaseModelInfo* mi = ms_modelInfoPtrs[model];
+    cleo->GetPointerToScriptVar(handle)->i = (mi ? mi->m_nAnimKey : -1);
+    cleoaddon->UpdateCompareFlag(handle, mi != NULL);
+}
+CLEO_Fn(DRAW_TEMPORARY_SHADOW) // newOpcodes
+{
+    CVector posn;
+    void *shadowData;
+    unsigned int type, intensity, red, green, blue, texture;
+    float width, height, rotation, distance;
+
+    type = cleo->ReadParam(handle)->u;
+    posn.x = cleo->ReadParam(handle)->f;
+    posn.y = cleo->ReadParam(handle)->f;
+    posn.z = cleo->ReadParam(handle)->f;
+    width = cleo->ReadParam(handle)->f;
+    height = cleo->ReadParam(handle)->f;
+    rotation = cleo->ReadParam(handle)->f;
+    distance = cleo->ReadParam(handle)->f;
+    texture = cleo->ReadParam(handle)->u;
+    intensity = cleo->ReadParam(handle)->u;
+    red = cleo->ReadParam(handle)->u;
+    green = cleo->ReadParam(handle)->u;
+    blue = cleo->ReadParam(handle)->u;
+    shadowData = (void*)cleo->ReadParam(handle)->i;
+
+    float a = (M_PI / 180.0f) * rotation;
+    float y1 = sinf(a) * width / 2.0f;
+    float x1 = cosf(a) * width / 2.0f;
+    float y2 = sinf(a + 90.0f) * height / 2.0f;
+    float x2 = cosf(a + 90.0f) * height / 2.0f;
+
+    if(texture < 11)
+    {
+        switch(texture)
+        {
+            case 1: texture = *gpShadowCarTex; break;
+            case 2: texture = *gpShadowPedTex; break;
+            default: case 3: texture = *gpShadowExplosionTex; break;
+            case 4: texture = *gpShadowHeliTex; break;
+            case 5: texture = *gpShadowHeadLightsTex; break;
+            case 6: texture = *gpBloodPoolTex; break;
+            case 7: texture = *gpShadowHeadLightsTex2; break;
+            case 8: texture = *gpShadowBikeTex; break;
+            case 9: texture = *gpShadowBaronTex; break;
+            case 10: texture = *gpPostShadowTex; break;
+        }
+    }
+    StoreShadowToBeRendered(type, (RwTexture*)texture, &posn, x1, y1, x2, y2, intensity, red, green, blue, distance, false, 1.0f, (CRealTimeShadow*)shadowData, false);
+}
+CLEO_Fn(DRAW_PERMANENT_SHADOW) // newOpcodes
+{
+    CVector posn;
+    unsigned int type, intensity, red, green, blue, texture, time;
+    float width, height, rotation, distance;
+
+    type = cleo->ReadParam(handle)->u;
+    posn.x = cleo->ReadParam(handle)->f;
+    posn.y = cleo->ReadParam(handle)->f;
+    posn.z = cleo->ReadParam(handle)->f;
+    width = cleo->ReadParam(handle)->f;
+    height = cleo->ReadParam(handle)->f;
+    rotation = cleo->ReadParam(handle)->f;
+    distance = cleo->ReadParam(handle)->f;
+    texture = cleo->ReadParam(handle)->u;
+    intensity = cleo->ReadParam(handle)->u;
+    red = cleo->ReadParam(handle)->u;
+    green = cleo->ReadParam(handle)->u;
+    blue = cleo->ReadParam(handle)->u;
+    time = cleo->ReadParam(handle)->u;
+
+    float a = (M_PI / 180.0f) * rotation;
+    float y1 = sinf(a) * width / 2.0f;
+    float x1 = cosf(a) * width / 2.0f;
+    float y2 = sinf(a + 90.0f) * height / 2.0f;
+    float x2 = cosf(a + 90.0f) * height / 2.0f;
+
+    if(texture < 11)
+    {
+        switch(texture)
+        {
+            case 1: texture = *gpShadowCarTex; break;
+            case 2: texture = *gpShadowPedTex; break;
+            default: case 3: texture = *gpShadowExplosionTex; break;
+            case 4: texture = *gpShadowHeliTex; break;
+            case 5: texture = *gpShadowHeadLightsTex; break;
+            case 6: texture = *gpBloodPoolTex; break;
+            case 7: texture = *gpShadowHeadLightsTex2; break;
+            case 8: texture = *gpShadowBikeTex; break;
+            case 9: texture = *gpShadowBaronTex; break;
+            case 10: texture = *gpPostShadowTex; break;
+        }
+    }
+    AddPermanentShadow(type, (RwTexture*)texture, &posn, x1, y1, x2, y2, intensity, red, green, blue, distance, 1.0f, time);
+}
+CLEO_Fn(DRAW_TEMPORARY_LIGHT) // newOpcodes
+{
+    float radius;
+    CVector posn, dir;
+    unsigned int type, red, green, blue, entity;
+
+    type = cleo->ReadParam(handle)->u;
+    posn.x = cleo->ReadParam(handle)->f;
+    posn.y = cleo->ReadParam(handle)->f;
+    posn.z = cleo->ReadParam(handle)->f;
+    dir.x = cleo->ReadParam(handle)->f;
+    dir.y = cleo->ReadParam(handle)->f;
+    dir.z = cleo->ReadParam(handle)->f;
+    radius = cleo->ReadParam(handle)->f;
+    red = cleo->ReadParam(handle)->u;
+    green = cleo->ReadParam(handle)->u;
+    blue = cleo->ReadParam(handle)->u;
+    entity = cleo->ReadParam(handle)->u;
+
+    AddLight(type, posn, dir, radius, (float)red / 255.0f, (float)green / 255.0f, (float)blue / 255.0f, 0, false, (CEntity*)entity);
+}
+CLEO_Fn(DRAW_TEMPORARY_CORONA) // newOpcodes
+{
+    float size;
+    CVector posn;
+    unsigned int texture, red, green, blue, alpha, entity;
+
+    texture = cleo->ReadParam(handle)->u;
+    red = cleo->ReadParam(handle)->u;
+    green = cleo->ReadParam(handle)->u;
+    blue = cleo->ReadParam(handle)->u;
+    alpha = cleo->ReadParam(handle)->u;
+    entity = cleo->ReadParam(handle)->u;
+    posn.x = cleo->ReadParam(handle)->f;
+    posn.y = cleo->ReadParam(handle)->f;
+    posn.z = cleo->ReadParam(handle)->f;
+    size = cleo->ReadParam(handle)->f;
+
+    if(texture < 10)
+    {
+        switch(texture)
+        {
+            default: texture = gpCoronaTexture[0]; break;
+            case 1: texture = gpCoronaTexture[1]; break;
+            case 2: texture = gpCoronaTexture[2]; break;
+            case 3: texture = gpCoronaTexture[3]; break;
+            case 4: texture = gpCoronaTexture[4]; break;
+            case 9: texture = gpCoronaTexture[9]; break;
+        }
+    }
+    RegisterCorona(g_nTempCoronaId, (CEntity*)entity, red, green, blue, alpha, &posn, size, 100.0f, (RwTexture*)texture, 0, false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false);
+    ++g_nTempCoronaId;
+}
+CLEO_Fn(DRAW_TEMPORARY_CORONA_EX) // newOpcodes
+{
+    float size, farClip, nearClip, fadeSpeed;
+    CVector posn;
+    unsigned int texture, red, green, blue, alpha, entity, flare, reflection, checkObstacles, onlyFromBelow, flashWhileFading;
+
+    texture = cleo->ReadParam(handle)->u;
+    red = cleo->ReadParam(handle)->u;
+    green = cleo->ReadParam(handle)->u;
+    blue = cleo->ReadParam(handle)->u;
+    alpha = cleo->ReadParam(handle)->u;
+    entity = cleo->ReadParam(handle)->u;
+    posn.x = cleo->ReadParam(handle)->f;
+    posn.y = cleo->ReadParam(handle)->f;
+    posn.z = cleo->ReadParam(handle)->f;
+    size = cleo->ReadParam(handle)->f;
+    farClip = cleo->ReadParam(handle)->f;
+    nearClip = cleo->ReadParam(handle)->f;
+    flare = cleo->ReadParam(handle)->u;
+    reflection = cleo->ReadParam(handle)->u;
+    checkObstacles = cleo->ReadParam(handle)->u;
+    flashWhileFading = cleo->ReadParam(handle)->u;
+    fadeSpeed = cleo->ReadParam(handle)->f;
+    onlyFromBelow = cleo->ReadParam(handle)->u;
+
+    if(texture < 10)
+    {
+        switch(texture)
+        {
+            default: texture = gpCoronaTexture[0]; break;
+            case 1: texture = gpCoronaTexture[1]; break;
+            case 2: texture = gpCoronaTexture[2]; break;
+            case 3: texture = gpCoronaTexture[3]; break;
+            case 4: texture = gpCoronaTexture[4]; break;
+            case 9: texture = gpCoronaTexture[9]; break;
+        }
+    }
+    RegisterCorona(g_nTempCoronaId, (CEntity*)entity, red, green, blue, alpha, &posn, size, farClip, (RwTexture*)texture, flare,
+                   reflection, checkObstacles, 0, 0.0f, false, nearClip, flashWhileFading, fadeSpeed, onlyFromBelow, false);
+    ++g_nTempCoronaId;
+}
+CLEO_Fn(GET_SUN_COLORS)
+{
+    cleo->GetPointerToScriptVar(handle)->i = m_CurrentColours->suncorer;
+    cleo->GetPointerToScriptVar(handle)->i = m_CurrentColours->suncoreg;
+    cleo->GetPointerToScriptVar(handle)->i = m_CurrentColours->suncoreb;
+    cleo->GetPointerToScriptVar(handle)->i = m_CurrentColours->suncoronar;
+    cleo->GetPointerToScriptVar(handle)->i = m_CurrentColours->suncoronag;
+    cleo->GetPointerToScriptVar(handle)->i = m_CurrentColours->suncoronab;
+}
+CLEO_Fn(GET_SUN_SCREEN_COORS)
+{
+    cleo->GetPointerToScriptVar(handle)->f = *SunScreenX;
+    cleo->GetPointerToScriptVar(handle)->f = *SunScreenY;
+}
+CLEO_Fn(GET_SUN_WORLD_COORS)
+{
+    CVector *sunPos = &m_VectorToSun[*m_CurrentStoredValue];
+    float sunDist = 2.0f * *ms_fFarClipZ;
+    cleo->GetPointerToScriptVar(handle)->f = sunPos->x * sunDist;
+    cleo->GetPointerToScriptVar(handle)->f = sunPos->y * sunDist;
+    cleo->GetPointerToScriptVar(handle)->f = sunPos->z * sunDist;
+    cleoaddon->UpdateCompareFlag(handle, sunPos->z > -0.1f);
+}
+CLEO_Fn(GET_SUN_SIZE)
+{
+    float sunSize = m_CurrentColours->sunsz;
+    cleo->GetPointerToScriptVar(handle)->f = sunSize * 2.7335f;
+    cleo->GetPointerToScriptVar(handle)->f = sunSize * 6.0f;
+}
+CLEO_Fn(GET_TRAFFICLIGHTS_CURRENT_COLOR)
+{
+    cleo->GetPointerToScriptVar(handle)->i = LightForCars2_Visual();
+    cleo->GetPointerToScriptVar(handle)->i = LightForCars1_Visual();
+}
+CLEO_Fn(GET_CAR_LIGHT_DAMAGE_STATUS)
+{
+    CAutomobile *vehicle = (CAutomobile*)GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    int lightId = cleo->ReadParam(handle)->i;
+    if(vehicle->m_nVehicleType == VEHICLE_TYPE_BOAT || vehicle->m_nVehicleType == VEHICLE_TYPE_BIKE || vehicle->m_nVehicleType == VEHICLE_TYPE_BMX)
+    {
+        cleo->GetPointerToScriptVar(handle)->i = 0;
+        return;
+    }
+    cleo->GetPointerToScriptVar(handle)->i = GetLightStatus(&vehicle->m_DamageManager, lightId);
+}
+CLEO_Fn(SET_CAR_LIGHT_DAMAGE_STATUS)
+{
+    CAutomobile *vehicle = (CAutomobile*)GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    int lightId = cleo->ReadParam(handle)->i;
+    int state = cleo->ReadParam(handle)->i;
+    if(vehicle->m_nVehicleType == VEHICLE_TYPE_BOAT || vehicle->m_nVehicleType == VEHICLE_TYPE_BIKE || vehicle->m_nVehicleType == VEHICLE_TYPE_BMX)
+    {
+        return;
+    }
+    SetLightStatus(&vehicle->m_DamageManager, lightId, state);
+}
+CLEO_Fn(GET_VEHICLE_CLASS_AND_SUBCLASS)
+{
+    CVehicle *vehicle = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    cleo->GetPointerToScriptVar(handle)->i = vehicle->m_nVehicleType;
+    cleo->GetPointerToScriptVar(handle)->i = vehicle->m_nVehicleSubType;
+}
+CLEO_Fn(GET_VEHICLE_DUMMY_POSN)
+{
+    CVehicle *vehicle = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    bool bResult = false;
+    CVector posn(0);
+    unsigned int dummy, posflag, xflag;
+
+    dummy = cleo->ReadParam(handle)->u;
+    posflag = cleo->ReadParam(handle)->u;
+    xflag = cleo->ReadParam(handle)->u;
+
+    if(dummy < 15)
+    {
+        CVehicleModelInfo* mi = (CVehicleModelInfo*)ms_modelInfoPtrs[vehicle->m_nModelIndex];
+        if(mi && mi->m_VehicleStructure)
+        {
+            bResult = true;
+            posn = mi->m_VehicleStructure->m_positions[dummy];
+            if(xflag) posn.x = -posn.x;
+            if(posflag)
+            {
+                posn = TransformFromObjectSpace(vehicle, posn);
+            }
+        }
+    }
+    cleo->GetPointerToScriptVar(handle)->f = posn.x;
+    cleo->GetPointerToScriptVar(handle)->f = posn.y;
+    cleo->GetPointerToScriptVar(handle)->f = posn.z;
+    cleoaddon->UpdateCompareFlag(handle, bResult);
+}
+CLEO_Fn(CREATE_PROJECTILE)
+{
+    float force;
+    CVector origin, target;
+    unsigned int type, entity, targetEntity;
+
+    type = cleo->ReadParam(handle)->u;
+    entity = cleo->ReadParam(handle)->u;
+    origin.x = cleo->ReadParam(handle)->f;
+    origin.y = cleo->ReadParam(handle)->f;
+    origin.z = cleo->ReadParam(handle)->f;
+    target.x = cleo->ReadParam(handle)->f;
+    target.y = cleo->ReadParam(handle)->f;
+    target.z = cleo->ReadParam(handle)->f;
+    targetEntity = cleo->ReadParam(handle)->u;
+    force = cleo->ReadParam(handle)->f;
+    cleoaddon->UpdateCompareFlag(handle, AddProjectile((CEntity*)entity, (eWeaponType)type, origin, force, &target, (CEntity*)targetEntity));
+}
+
+#define SETITEM_SA_SFX_VOLUME               11
+#define SETITEM_SA_RADIO_VOLUME             12
+
+inline float GetSettingVal(unsigned char set)
+{
+    uintptr_t settingsArray = *(uintptr_t*)(pGTASA + 0x679A40);
+    return *(int32_t*)(settingsArray + 0x20 * set + 0x8) * 0.01f;
+}
+CLEO_Fn(GET_GAME_VOLUME)
+{
+    unsigned int type;
+
+    type = cleo->ReadParam(handle)->u;
+    cleo_ifs_t::data_t* sfxVol = cleo->GetPointerToScriptVar(handle);
+    if(sfxVol)
+    {
+        if(type)
+        {
+            sfxVol->f = GetSettingVal(SETITEM_SA_SFX_VOLUME);
+        }
+        else
+        {
+            sfxVol->i = GetSettingVal(SETITEM_SA_SFX_VOLUME);
+        }
+    }
+    else { cleo->ReadParam(handle); }
+    cleo_ifs_t::data_t* radioVol = cleo->GetPointerToScriptVar(handle);
+    if(radioVol)
+    {
+        if(type)
+        {
+            radioVol->f = GetSettingVal(SETITEM_SA_RADIO_VOLUME);
+        }
+        else
+        {
+            radioVol->i = GetSettingVal(SETITEM_SA_RADIO_VOLUME);
+        }
+    }
+    else { cleo->ReadParam(handle); }
+}
+CLEO_Fn(GET_SCREEN_WIDTH_AND_HEIGHT)
+{
+    unsigned int type;
+
+    type = cleo->ReadParam(handle)->u;
+    cleo_ifs_t::data_t* width = cleo->GetPointerToScriptVar(handle);
+    if(width)
+    {
+        if(type)
+        {
+            width->f = RsGlobal->maximumWidth;
+        }
+        else
+        {
+            width->i = RsGlobal->maximumWidth;
+        }
+    }
+    else { cleo->ReadParam(handle); }
+    cleo_ifs_t::data_t* height = cleo->GetPointerToScriptVar(handle);
+    if(height)
+    {
+        if(type)
+        {
+            height->f = RsGlobal->maximumHeight;
+        }
+        else
+        {
+            height->i = RsGlobal->maximumHeight;
+        }
+    }
+    else { cleo->ReadParam(handle); }
+}
+CLEO_Fn(GET_CAR_COMPONENT_MATRIX)
+{
+    char buf[255];
+    CVehicle *vehicle = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    cleoaddon->ReadString(handle, buf, sizeof(buf));
+
+    if(buf[0] && vehicle->m_pRwClump)
+    {
+        RwFrame* comp = GetFrameFromName(vehicle->m_pRwClump, buf);
+        if(comp)
+        {
+            cleo->GetPointerToScriptVar(handle)->i = (int)&comp->ltm;
+            cleoaddon->UpdateCompareFlag(handle, true);
+            return;
+        }
+    }
+    cleo->GetPointerToScriptVar(handle)->i = 0;
+    cleoaddon->UpdateCompareFlag(handle, false);
+}
+CLEO_Fn(GET_CAR_COMPONENT)
+{
+    char buf[255];
+    CVehicle *vehicle = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    cleoaddon->ReadString(handle, buf, sizeof(buf));
+
+    if(buf[0] && vehicle->m_pRwClump)
+    {
+        RwFrame* comp = GetFrameFromName(vehicle->m_pRwClump, buf);
+        if(comp)
+        {
+            cleo->GetPointerToScriptVar(handle)->i = (int)comp;
+            cleoaddon->UpdateCompareFlag(handle, true);
+            return;
+        }
+    }
+    cleo->GetPointerToScriptVar(handle)->i = 0;
+    cleoaddon->UpdateCompareFlag(handle, false);
+}
+CLEO_Fn(SET_CAR_COMPONENT_STATE)
+{
+    char buf[255];
+    CVehicle *vehicle = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    cleoaddon->ReadString(handle, buf, sizeof(buf));
+    int state = cleo->ReadParam(handle)->i;
+
+    if(buf[0] && vehicle->m_pRwClump)
+    {
+        RwFrame* comp = GetFrameFromName(vehicle->m_pRwClump, buf);
+        if(comp)
+        {
+            SetComponentVisibility(vehicle, comp, state);
+            cleoaddon->UpdateCompareFlag(handle, true);
+            return;
+        }
+    }
+    cleoaddon->UpdateCompareFlag(handle, false);
+}
+CLEO_Fn(SET_CAR_COMPONENT_MODEL_ALPHA)
+{
+    char buf[255];
+    CVehicle *vehicle = GetVehicleFromRef(cleo->ReadParam(handle)->i);
+    cleoaddon->ReadString(handle, buf, sizeof(buf));
+    int alpha = cleo->ReadParam(handle)->i;
+
+    if(buf[0] && vehicle->m_pRwClump)
+    {
+        RwFrame* comp = GetFrameFromName(vehicle->m_pRwClump, buf);
+        if(comp)
+        {
+            RwFrameForAllObjects(comp, SetComponentAtomicAlpha, (void*)alpha);
+            cleoaddon->UpdateCompareFlag(handle, true);
+            return;
+        }
+    }
+    cleoaddon->UpdateCompareFlag(handle, false);
+}
+CLEO_Fn(GET_COMPONENT_CHILD_COMPONENT)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = (int)comp->child;
+}
+CLEO_Fn(GET_COMPONENT_NEXT_COMPONENT)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = (int)comp->next;
+}
+CLEO_Fn(GET_COMPONENT_NAME)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    const char* nodeName = GetFrameNodeName(comp);
+    cleoaddon->WriteString(handle, nodeName ? nodeName : "");
+}
+CLEO_Fn(GET_COMPONENT_WORLD_MATRIX)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = (int)&comp->ltm;
+}
+CLEO_Fn(GET_COMPONENT_MODELLING_MATRIX)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = (int)&comp->modelling;
+}
+CLEO_Fn(GET_COMPONENT_PARENT_COMPONENT)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    cleo->GetPointerToScriptVar(handle)->i = (int)comp->object.parent;
+}
+CLEO_Fn(GET_COMPONENT_NUM_OBJECTS)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    unsigned int counter = 0;
+    RwFrameForAllObjects(comp, CountObjectsInFrame, &counter);
+}
+CLEO_Fn(GET_COMPONENT_OBJECT)
+{
+    RwFrame* comp = (RwFrame*)cleo->ReadParam(handle)->i;
+    AtomicSearchInfo si { 0 };
+    si.number = cleo->ReadParam(handle)->u;
+    
+    RwFrameForAllObjects(comp, GetObjectInFrame, &si);
+    cleo->GetPointerToScriptVar(handle)->i = (int)si.result;
+    cleoaddon->UpdateCompareFlag(handle, si.result != NULL);
+}
+CLEO_Fn(HIDE_OBJECT_ATOMIC)
+{
+    RpAtomic* atomic = (RpAtomic*)cleo->ReadParam(handle)->i;
+    if(cleo->ReadParam(handle)->u)
+    {
+        atomic->object.object.flags = 0x0;
+    }
+    else
+    {
+        atomic->object.object.flags = 0x4;
+    }
+}
+CLEO_Fn(GET_OBJECT_ATOMIC_FLAG)
+{
+    RpAtomic* atomic = (RpAtomic*)cleo->ReadParam(handle)->i;
+    int flag = cleo->ReadParam(handle)->i;
+
+    uint16_t atomicFlags = *(uint16_t*)( (int)(&atomic->object.object.flags) + *ms_atomicPluginOffset );
+    cleo->GetPointerToScriptVar(handle)->i = ((atomicFlags & flag) != 0);
+}
+CLEO_Fn(SET_OBJECT_ATOMIC_FLAG)
+{
+    RpAtomic* atomic = (RpAtomic*)cleo->ReadParam(handle)->i;
+    uint16_t& atomicFlags = *(uint16_t*)( (int)(&atomic->object.object.flags) + *ms_atomicPluginOffset );
+    int flag = cleo->ReadParam(handle)->i;
+    if(cleo->ReadParam(handle)->i != 0)
+    {
+        atomicFlags |= flag;
+    }
+    else
+    {
+        atomicFlags &= ~flag;
+    }
+}
+CLEO_Fn(GET_OBJECT_ATOMIC_NUM_MATERIALS)
+{
+    RpAtomic* atomic = (RpAtomic*)cleo->ReadParam(handle)->i;
+    if(!atomic->geometry)
+    {
+        cleo->GetPointerToScriptVar(handle)->i = 0;
+        cleoaddon->UpdateCompareFlag(handle, false);
+        return;
+    }
+    cleo->GetPointerToScriptVar(handle)->i = atomic->geometry->matList.numMaterials;
+    cleoaddon->UpdateCompareFlag(handle, true);
+}
+CLEO_Fn(GET_OBJECT_ATOMIC_MATERIAL_TEXTURE)
+{
+    RpAtomic* atomic = (RpAtomic*)cleo->ReadParam(handle)->i;
+    int mat = cleo->ReadParam(handle)->u;
+    if(!atomic->geometry || atomic->geometry->matList.numMaterials >= mat)
+    {
+        cleo->GetPointerToScriptVar(handle)->i = 0;
+        cleoaddon->UpdateCompareFlag(handle, false);
+        return;
+    }
+    cleo->GetPointerToScriptVar(handle)->i = (int)atomic->geometry->matList.materials[mat]->texture;
+    cleoaddon->UpdateCompareFlag(handle, true);
 }
 
 DECL_HOOKv(InitialiseWhenRestarting)
